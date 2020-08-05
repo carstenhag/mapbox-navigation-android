@@ -22,6 +22,7 @@ import com.mapbox.mapboxsdk.location.LocationComponent;
 import com.mapbox.mapboxsdk.location.LocationComponentActivationOptions;
 import com.mapbox.mapboxsdk.location.LocationComponentOptions;
 import com.mapbox.mapboxsdk.location.OnCameraTrackingChangedListener;
+import com.mapbox.mapboxsdk.location.OnIndicatorPositionChangedListener;
 import com.mapbox.mapboxsdk.location.modes.CameraMode;
 import com.mapbox.mapboxsdk.location.modes.RenderMode;
 import com.mapbox.mapboxsdk.maps.MapView;
@@ -221,6 +222,23 @@ public class NavigationMapboxMap implements LifecycleObserver {
   }
 
   @TestOnly
+  NavigationMapboxMap(@NonNull MapWayName mapWayName,
+                      @NonNull MapFpsDelegate mapFpsDelegate,
+                      NavigationMapRoute mapRoute,
+                      NavigationCamera mapCamera,
+                      LocationFpsDelegate locationFpsDelegate,
+                      LocationComponent locationComponent,
+                      boolean vanishRouteLineEnabled) {
+    this.mapWayName = mapWayName;
+    this.mapFpsDelegate = mapFpsDelegate;
+    this.mapRoute = mapRoute;
+    this.mapCamera = mapCamera;
+    this.locationFpsDelegate = locationFpsDelegate;
+    this.locationComponent = locationComponent;
+    this.vanishRouteLineEnabled = vanishRouteLineEnabled;
+  }
+
+  @TestOnly
   NavigationMapboxMap(MapboxMap mapboxMap, MapLayerInteractor layerInteractor, MapPaddingAdjustor adjustor) {
     this.layerInteractor = layerInteractor;
     this.mapboxMap = mapboxMap;
@@ -362,7 +380,7 @@ public class NavigationMapboxMap implements LifecycleObserver {
   public void addProgressChangeListener(@NonNull MapboxNavigation navigation) {
     this.navigation = navigation;
     initializeFpsDelegate(mapView);
-    mapRoute.addProgressChangeListener(navigation, vanishRouteLineEnabled);
+    mapRoute.addProgressChangeListener(navigation);
     mapCamera.addProgressChangeListener(navigation);
     mapFpsDelegate.addProgressChangeListener(navigation);
     navigation.registerLocationObserver(locationObserver);
@@ -370,20 +388,6 @@ public class NavigationMapboxMap implements LifecycleObserver {
     if (navigationPuckPresenter != null) {
       navigationPuckPresenter.addProgressChangeListener(navigation);
     }
-  }
-
-  /**
-   * Can be used to automatically drive the map camera / route updates and arrow
-   * once navigation has started.
-   * <p>
-   * These will automatically be removed in {@link MapboxNavigation#onDestroy()}.
-   *
-   * @param navigation to add the progress listeners
-   * @param enableVanishingRouteLine determines if the route line should vanish behind the puck.
-   */
-  public void addProgressChangeListener(@NonNull MapboxNavigation navigation, boolean enableVanishingRouteLine) {
-    this.vanishRouteLineEnabled = enableVanishingRouteLine;
-    addProgressChangeListener(navigation);
   }
 
   /**
@@ -437,7 +441,7 @@ public class NavigationMapboxMap implements LifecycleObserver {
     settings.updateShouldUseDefaultPadding(mapPaddingAdjustor.isUsingDefault());
     settings.updateCameraTrackingMode(mapCamera.getCameraTrackingMode());
     settings.updateLocationFpsEnabled(locationFpsDelegate.isEnabled());
-    settings.updatePercentDistanceTraveled(mapRoute.getPercentDistanceTraveled());
+    settings.updateVanishingRouteLineEnabled(vanishRouteLineEnabled);
     NavigationMapboxMapInstanceState instanceState = new NavigationMapboxMapInstanceState(settings);
     outState.putParcelable(key, instanceState);
   }
@@ -456,7 +460,6 @@ public class NavigationMapboxMap implements LifecycleObserver {
   public void restoreFrom(NavigationMapboxMapInstanceState instanceState) {
     settings = instanceState.retrieveSettings();
     restoreMapWith(settings);
-    restoreVanishingRouteLineSection(settings);
   }
 
   /**
@@ -754,6 +757,20 @@ public class NavigationMapboxMap implements LifecycleObserver {
     mapboxMap.snapshot(navigationSnapshotReadyCallback);
   }
 
+  public void enableVanishingRouteLine() {
+    if (!vanishRouteLineEnabled) {
+      vanishRouteLineEnabled = true;
+      addIndicatorPositionChangedListener();
+    }
+  }
+
+  public void disableVanishingRouteLine() {
+    if (vanishRouteLineEnabled) {
+      vanishRouteLineEnabled = false;
+      locationComponent.removeOnIndicatorPositionChangedListener(indicatorPositionChangedListener);
+    }
+  }
+
   /**
    * Called during the onStart event of the Lifecycle owner to initialize resources.
    */
@@ -766,6 +783,10 @@ public class NavigationMapboxMap implements LifecycleObserver {
 
     if (navigation != null) {
       navigation.registerLocationObserver(locationObserver);
+    }
+
+    if (vanishRouteLineEnabled) {
+      addIndicatorPositionChangedListener();
     }
 
     if (navigationPuckPresenter != null) {
@@ -785,6 +806,10 @@ public class NavigationMapboxMap implements LifecycleObserver {
 
     if (navigation != null) {
       navigation.unregisterLocationObserver(locationObserver);
+    }
+
+    if (vanishRouteLineEnabled) {
+      locationComponent.removeOnIndicatorPositionChangedListener(indicatorPositionChangedListener);
     }
 
     if (navigationPuckPresenter != null) {
@@ -923,14 +948,6 @@ public class NavigationMapboxMap implements LifecycleObserver {
     mapWayName.updateWayNameWithPoint(mapPoint);
   }
 
-  private void restoreVanishingRouteLineSection(NavigationMapSettings settings) {
-    float percentDistanceTraveled = settings.retrievePercentDistanceTraveled();
-    if (percentDistanceTraveled > 0) {
-      mapRoute.updateRouteLineWithDistanceTraveled(percentDistanceTraveled);
-      settings.updatePercentDistanceTraveled(0);
-    }
-  }
-
   private void restoreMapWith(NavigationMapSettings settings) {
     updateCameraTrackingMode(settings.retrieveCameraTrackingMode());
     updateLocationFpsThrottleEnabled(settings.isLocationFpsEnabled());
@@ -945,6 +962,11 @@ public class NavigationMapboxMap implements LifecycleObserver {
     if (mapFpsDelegate != null) {
       mapFpsDelegate.updateMaxFpsThreshold(settings.retrieveMaxFps());
       mapFpsDelegate.updateEnabled(settings.isMaxFpsEnabled());
+    }
+
+    vanishRouteLineEnabled = settings.retrieveVanishingRouteLineEnabled();
+    if (vanishRouteLineEnabled) {
+      addIndicatorPositionChangedListener();
     }
   }
 
@@ -994,4 +1016,14 @@ public class NavigationMapboxMap implements LifecycleObserver {
       }
     }
   };
+
+  private OnIndicatorPositionChangedListener indicatorPositionChangedListener = point -> {
+    mapRoute.updateTraveledRouteLine(point);
+  };
+
+  private void addIndicatorPositionChangedListener() {
+    // first make a call to remove the listener to prevent duplicates.
+    locationComponent.removeOnIndicatorPositionChangedListener(indicatorPositionChangedListener);
+    locationComponent.addOnIndicatorPositionChangedListener(indicatorPositionChangedListener);
+  }
 }

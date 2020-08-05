@@ -49,6 +49,6 @@ public class RouteConstants {
   public static final String DESTINATION_MARKER_NAME = "destinationMarker";
   public static final String MAPBOX_LOCATION_ID = "mapbox-location";
   public static final double MINIMUM_ROUTE_LINE_OFFSET = .000000001;
-  public static final long ROUTE_LINE_VANISH_ANIMATION_DELAY = 0;
   public static final String LAYER_ABOVE_UPCOMING_MANEUVER_ARROW = "com.mapbox.annotations.points";
+  public static final double ROUTE_LINE_UPDATE_MAX_DISTANCE_THRESHOLD_IN_METERS = 1.0;
 }

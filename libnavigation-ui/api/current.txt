@@ -473,11 +473,12 @@ package com.mapbox.navigation.ui.map {
     method public void addOnCameraTrackingChangedListener(com.mapbox.mapboxsdk.location.OnCameraTrackingChangedListener!);
     method public boolean addOnWayNameChangedListener(com.mapbox.navigation.ui.map.OnWayNameChangedListener!);
     method public void addProgressChangeListener(com.mapbox.navigation.core.MapboxNavigation);
-    method public void addProgressChangeListener(com.mapbox.navigation.core.MapboxNavigation, boolean);
     method public void adjustLocationIconWith(int[]!);
     method public void clearMarkers();
+    method public void disableVanishingRouteLine();
     method public void drawRoute(com.mapbox.api.directions.v5.models.DirectionsRoute);
     method public void drawRoutes(java.util.List<? extends com.mapbox.api.directions.v5.models.DirectionsRoute>);
+    method public void enableVanishingRouteLine();
     method public boolean isIncidentsVisible();
     method public boolean isTrafficVisible();
     method public void onNewRouteProgress(com.mapbox.navigation.base.trip.model.RouteProgress!);
@@ -598,10 +599,8 @@ package com.mapbox.navigation.ui.route {
 
   public class NavigationMapRoute implements androidx.lifecycle.LifecycleObserver {
     method public void addProgressChangeListener(com.mapbox.navigation.core.MapboxNavigation!);
-    method public void addProgressChangeListener(com.mapbox.navigation.core.MapboxNavigation!, boolean);
     method public void addRoute(com.mapbox.api.directions.v5.models.DirectionsRoute!);
     method public void addRoutes(@Size(min=1) java.util.List<? extends com.mapbox.api.directions.v5.models.DirectionsRoute>);
-    method public float getPercentDistanceTraveled();
     method public void onNewRouteProgress(com.mapbox.navigation.base.trip.model.RouteProgress!);
     method @androidx.lifecycle.OnLifecycleEvent(androidx.lifecycle.Lifecycle.Event.ON_START) protected void onStart();
     method @androidx.lifecycle.OnLifecycleEvent(androidx.lifecycle.Lifecycle.Event.ON_STOP) protected void onStop();
@@ -609,15 +608,15 @@ package com.mapbox.navigation.ui.route {
     method public void setOnRouteSelectionChangeListener(com.mapbox.navigation.ui.route.OnRouteSelectionChangeListener?);
     method public void showAlternativeRoutes(boolean);
     method public void updateRouteArrowVisibilityTo(boolean);
-    method public void updateRouteLineWithDistanceTraveled(float);
     method public void updateRouteVisibilityTo(boolean);
+    method public void updateTraveledRouteLine(com.mapbox.geojson.Point!);
   }
 
   public static class NavigationMapRoute.Builder {
     ctor public NavigationMapRoute.Builder(com.mapbox.mapboxsdk.maps.MapView, com.mapbox.mapboxsdk.maps.MapboxMap, androidx.lifecycle.LifecycleOwner);
     method public com.mapbox.navigation.ui.route.NavigationMapRoute! build();
     method public com.mapbox.navigation.ui.route.NavigationMapRoute.Builder! withBelowLayer(String?);
-    method public com.mapbox.navigation.ui.route.NavigationMapRoute.Builder! withMapboxNavigation(com.mapbox.navigation.core.MapboxNavigation?, boolean);
+    method public com.mapbox.navigation.ui.route.NavigationMapRoute.Builder! withMapboxNavigation(com.mapbox.navigation.core.MapboxNavigation?);
     method public com.mapbox.navigation.ui.route.NavigationMapRoute.Builder! withRouteLineInitializedCallback(com.mapbox.navigation.ui.route.MapRouteLineInitializedCallback?);
     method public com.mapbox.navigation.ui.route.NavigationMapRoute.Builder! withStyle(@StyleRes int);
   }

@@ -902,8 +902,7 @@ public class NavigationView extends CoordinatorLayout implements LifecycleOwner,
 
   private void initializeNavigationListeners(NavigationViewOptions options, NavigationViewModel navigationViewModel) {
     navigationMap.addProgressChangeListener(
-        navigationViewModel.retrieveNavigation(),
-        options.enableVanishingRouteLine()
+        navigationViewModel.retrieveNavigation()
     );
     navigationViewEventDispatcher.initializeListeners(options, navigationViewModel);
   }

@@ -99,6 +99,7 @@ class NavigationViewFragment : Fragment(), OnNavigationReadyCallback, Navigation
             ifNonNull(navigationView.retrieveNavigationMapboxMap()) { navMapboxMap ->
                 this.navigationMapboxMap = navMapboxMap
                 this.navigationMapboxMap.updateLocationLayerRenderMode(RenderMode.NORMAL)
+                this.navigationMapboxMap.enableVanishingRouteLine()
                 navigationView.retrieveMapboxNavigation()?.let { this.mapboxNavigation = it }
                 val optionsBuilder = NavigationViewOptions.builder(requireContext())
                 optionsBuilder.navigationListener(this)

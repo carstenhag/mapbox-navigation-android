@@ -23,6 +23,7 @@ import com.mapbox.geojson.Point;
 import com.mapbox.mapboxsdk.geometry.LatLng;
 import com.mapbox.mapboxsdk.location.LocationComponent;
 import com.mapbox.mapboxsdk.location.LocationComponentActivationOptions;
+import com.mapbox.mapboxsdk.location.OnIndicatorPositionChangedListener;
 import com.mapbox.mapboxsdk.location.modes.CameraMode;
 import com.mapbox.mapboxsdk.location.modes.RenderMode;
 import com.mapbox.mapboxsdk.maps.MapView;
@@ -94,6 +95,7 @@ public class NavigationMapRouteActivity extends AppCompatActivity implements OnM
   public void onStartNavigation() {
     mapboxMap.getLocationComponent().setCameraMode(CameraMode.TRACKING_GPS);
     mapboxMap.getLocationComponent().setRenderMode(RenderMode.GPS);
+    mapboxMap.getLocationComponent().addOnIndicatorPositionChangedListener(indicatorPositionChangedListener);
     mapCamera.updateCameraTrackingMode(NavigationCamera.NAVIGATION_TRACKING_MODE_GPS);
     mapCamera.start(activeRoute);
     mapboxNavigation.startTripSession();
@@ -118,7 +120,7 @@ public class NavigationMapRouteActivity extends AppCompatActivity implements OnM
       mapCamera = new NavigationCamera(mapboxMap, mapboxNavigation, mapboxMap.getLocationComponent());
       mapCamera.addProgressChangeListener(mapboxNavigation);
       navigationMapRoute = new NavigationMapRoute.Builder(mapView, mapboxMap, this)
-              .withMapboxNavigation(mapboxNavigation, true)
+              .withMapboxNavigation(mapboxNavigation)
               .build();
 
       mapboxNavigation.getNavigationOptions().getLocationEngine().getLastLocation(locationEngineCallback);
@@ -165,6 +167,7 @@ public class NavigationMapRouteActivity extends AppCompatActivity implements OnM
     super.onStop();
     mapCamera.onStop();
     mapboxNavigation.unregisterLocationObserver(locationObserver);
+    mapboxMap.getLocationComponent().removeOnIndicatorPositionChangedListener(indicatorPositionChangedListener);
     mapView.onStop();
   }
 
@@ -344,4 +347,8 @@ public class NavigationMapRouteActivity extends AppCompatActivity implements OnM
   };
 
   private ReplayProgressObserver replayProgressObserver = new ReplayProgressObserver(mapboxReplayer);
+
+  private OnIndicatorPositionChangedListener indicatorPositionChangedListener = point -> {
+    navigationMapRoute.updateTraveledRouteLine(point);
+  };
 }

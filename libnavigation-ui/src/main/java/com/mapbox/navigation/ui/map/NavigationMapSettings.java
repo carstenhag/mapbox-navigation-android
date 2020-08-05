@@ -16,7 +16,7 @@ class NavigationMapSettings implements Parcelable {
   private boolean maxFpsEnabled = true;
   private boolean mapWayNameEnabled;
   private boolean locationFpsEnabled = true;
-  private float percentDistanceTraveled;
+  private boolean vanishingRouteLineEnabled;
 
   NavigationMapSettings() {
   }
@@ -74,12 +74,12 @@ class NavigationMapSettings implements Parcelable {
     this.locationFpsEnabled = locationFpsEnabled;
   }
 
-  void updatePercentDistanceTraveled(float distance) {
-    this.percentDistanceTraveled = distance;
+  void updateVanishingRouteLineEnabled(boolean enabled) {
+    this.vanishingRouteLineEnabled = enabled;
   }
 
-  float retrievePercentDistanceTraveled() {
-    return this.percentDistanceTraveled;
+  boolean retrieveVanishingRouteLineEnabled() {
+    return this.vanishingRouteLineEnabled;
   }
 
   boolean isLocationFpsEnabled() {
@@ -94,7 +94,7 @@ class NavigationMapSettings implements Parcelable {
     maxFpsEnabled = in.readByte() != 0;
     mapWayNameEnabled = in.readByte() != 0;
     locationFpsEnabled = in.readByte() != 0;
-    percentDistanceTraveled = in.readFloat();
+    vanishingRouteLineEnabled = in.readByte() != 0;
   }
 
   @Override
@@ -106,7 +106,7 @@ class NavigationMapSettings implements Parcelable {
     dest.writeByte((byte) (maxFpsEnabled ? 1 : 0));
     dest.writeByte((byte) (mapWayNameEnabled ? 1 : 0));
     dest.writeByte((byte) (locationFpsEnabled ? 1 : 0));
-    dest.writeFloat(percentDistanceTraveled);
+    dest.writeByte((byte) (vanishingRouteLineEnabled ? 1 : 0));
   }
 
   @Override

@@ -26,6 +26,8 @@ import com.mapbox.navigation.ui.internal.route.RouteConstants.PRIMARY_ROUTE_CASI
 import com.mapbox.navigation.ui.internal.route.RouteConstants.PRIMARY_ROUTE_LAYER_ID
 import com.mapbox.navigation.ui.internal.route.RouteConstants.PRIMARY_ROUTE_TRAFFIC_LAYER_ID
 import com.mapbox.navigation.ui.internal.route.RouteConstants.WAYPOINT_LAYER_ID
+import com.mapbox.navigation.ui.route.MapRouteLine.MapRouteLineSupport.findDistanceOfPointAlongLine
+import com.mapbox.turf.TurfMeasurement
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -51,7 +53,7 @@ class MapRouteLineTest {
 
     lateinit var mapRouteSourceProvider: MapRouteSourceProvider
     lateinit var layerProvider: MapRouteLayerProvider
-    lateinit var alternativeRouteCasingdLayer: LineLayer
+    lateinit var alternativeRouteCasingLayer: LineLayer
     lateinit var alternativeRouteLayer: LineLayer
     lateinit var primaryRouteCasingLayer: LineLayer
     lateinit var primaryRouteLayer: LineLayer
@@ -67,7 +69,7 @@ class MapRouteLineTest {
             ctx,
             R.attr.navigationViewRouteStyle, R.style.NavigationMapRoute
         )
-        alternativeRouteCasingdLayer = mockk {
+        alternativeRouteCasingLayer = mockk {
             every { id } returns ALTERNATIVE_ROUTE_CASING_LAYER_ID
         }
 
@@ -75,11 +77,11 @@ class MapRouteLineTest {
             every { id } returns ALTERNATIVE_ROUTE_LAYER_ID
         }
 
-        primaryRouteCasingLayer = mockk {
+        primaryRouteCasingLayer = mockk(relaxUnitFun = true) {
             every { id } returns PRIMARY_ROUTE_CASING_LAYER_ID
         }
 
-        primaryRouteLayer = mockk {
+        primaryRouteLayer = mockk(relaxUnitFun = true) {
             every { id } returns PRIMARY_ROUTE_LAYER_ID
         }
 
@@ -87,13 +89,13 @@ class MapRouteLineTest {
             every { id } returns WAYPOINT_LAYER_ID
         }
 
-        primaryRouteTrafficLayer = mockk {
+        primaryRouteTrafficLayer = mockk(relaxUnitFun = true) {
             every { id } returns PRIMARY_ROUTE_TRAFFIC_LAYER_ID
         }
 
         style = mockk(relaxUnitFun = true) {
             every { getLayer(ALTERNATIVE_ROUTE_LAYER_ID) } returns alternativeRouteLayer
-            every { getLayer(ALTERNATIVE_ROUTE_CASING_LAYER_ID) } returns alternativeRouteCasingdLayer
+            every { getLayer(ALTERNATIVE_ROUTE_CASING_LAYER_ID) } returns alternativeRouteCasingLayer
             every { getLayer(PRIMARY_ROUTE_LAYER_ID) } returns primaryRouteLayer
             every { getLayer(PRIMARY_ROUTE_TRAFFIC_LAYER_ID) } returns primaryRouteTrafficLayer
             every { getLayer(PRIMARY_ROUTE_CASING_LAYER_ID) } returns primaryRouteCasingLayer
@@ -119,7 +121,7 @@ class MapRouteLineTest {
                     1.0f,
                     -9273715
                 )
-            } returns alternativeRouteCasingdLayer
+            } returns alternativeRouteCasingLayer
             every {
                 initializeAlternativeRouteLayer(
                     style,
@@ -1029,13 +1031,13 @@ class MapRouteLineTest {
         every { primaryRouteLayer.setFilter(any()) } returns Unit
         every { primaryRouteCasingLayer.setFilter(any()) } returns Unit
         every { alternativeRouteLayer.setFilter(any()) } returns Unit
-        every { alternativeRouteCasingdLayer.setFilter(any()) } returns Unit
+        every { alternativeRouteCasingLayer.setFilter(any()) } returns Unit
         every { primaryRouteTrafficLayer.setFilter(any()) } returns Unit
         every { waypointLayer.setFilter(any()) } returns Unit
         every { primaryRouteLayer.setProperties(any()) } returns Unit
         every { primaryRouteCasingLayer.setProperties(any()) } returns Unit
         every { alternativeRouteLayer.setProperties(any()) } returns Unit
-        every { alternativeRouteCasingdLayer.setProperties(any()) } returns Unit
+        every { alternativeRouteCasingLayer.setProperties(any()) } returns Unit
         every { primaryRouteTrafficLayer.setProperties(any()) } returns Unit
         every { waypointLayer.setProperties(any()) } returns Unit
         every { style.getLayerAs<LineLayer>("mapbox-navigation-route-casing-layer") } returns primaryRouteCasingLayer
@@ -1061,7 +1063,6 @@ class MapRouteLineTest {
     fun getExpressionAtOffsetWhenExpressionDataEmpty() {
         every { style.layers } returns listOf(primaryRouteLayer)
         val expectedExpression = "[\"step\", [\"line-progress\"], [\"rgba\", 0.0, 0.0, 0.0, 0.0], 0.2, [\"rgba\", 86.0, 168.0, 251.0, 1.0]]"
-        val route = getDirectionsRoute(true)
         val mapRouteLine = MapRouteLine(
             ctx,
             style,
@@ -1082,6 +1083,71 @@ class MapRouteLineTest {
         assertEquals(expectedExpression, expression.toString())
     }
 
+    @Test
+    fun findDistanceOfPointAlongLine() {
+        val lineString = LineString.fromPolyline(getDirectionsRoute().geometry()!!, Constants.PRECISION_6)
+        val points = lineString.coordinates()
+        val midPoint = TurfMeasurement.midpoint(points[4], points[5])
+        val expectedDist = 150.09777136396087
+
+        val result = findDistanceOfPointAlongLine(lineString, midPoint)
+
+        assertEquals(expectedDist, result, 0.00000001)
+    }
+
+    @Test
+    fun updateVanishingPoint() {
+        every { style.layers } returns listOf(primaryRouteLayer)
+        every { style.isFullyLoaded } returnsMany listOf(false, false, false, false, false, false, false, false, true, true, true)
+        every { style.getLayerAs<LineLayer>("mapbox-navigation-route-casing-layer") } returns primaryRouteCasingLayer
+        every { style.getLayer("mapbox-navigation-route-layer") } returns primaryRouteLayer
+        every { style.getLayer("mapbox-navigation-route-traffic-layer") } returns primaryRouteTrafficLayer
+        val route = getDirectionsRoute()
+        val coordinates = LineString.fromPolyline(route.geometry()!!, Constants.PRECISION_6).coordinates()
+        val inputPoint = TurfMeasurement.midpoint(coordinates[4], coordinates[5])
+        val mapRouteLine = MapRouteLine(
+            ctx,
+            style,
+            styleRes,
+            null,
+            layerProvider,
+            mapRouteSourceProvider,
+            null
+        ).also { it.draw(listOf(route)) }
+
+        mapRouteLine.updateTraveledRouteLine(inputPoint)
+
+        verify { primaryRouteCasingLayer.setProperties(any()) }
+        verify { primaryRouteLayer.setProperties(any()) }
+        verify { primaryRouteTrafficLayer.setProperties(any()) }
+    }
+
+    @Test
+    fun updateVanishingPointWhenPointDistanceBeyondThreshold() {
+        every { style.layers } returns listOf(primaryRouteLayer)
+        every { style.isFullyLoaded } returnsMany listOf(false, false, false, false, false, false, false, false, true, true, true)
+        every { style.getLayerAs<LineLayer>("mapbox-navigation-route-casing-layer") } returns primaryRouteCasingLayer
+        every { style.getLayer("mapbox-navigation-route-layer") } returns primaryRouteLayer
+        every { style.getLayer("mapbox-navigation-route-traffic-layer") } returns primaryRouteTrafficLayer
+        val route = getDirectionsRoute()
+        val inputPoint = Point.fromLngLat(-122.508527, 37.974846)
+        val mapRouteLine = MapRouteLine(
+            ctx,
+            style,
+            styleRes,
+            null,
+            layerProvider,
+            mapRouteSourceProvider,
+            null
+        ).also { it.draw(listOf(route)) }
+
+        mapRouteLine.updateTraveledRouteLine(inputPoint)
+
+        verify(exactly = 0) { primaryRouteCasingLayer.setProperties(any()) }
+        verify(exactly = 0) { primaryRouteLayer.setProperties(any()) }
+        verify(exactly = 0) { primaryRouteTrafficLayer.setProperties(any()) }
+    }
+
     private fun getDirectionsRoute(includeCongestion: Boolean): DirectionsRoute {
         val congestion = when (includeCongestion) {
             true -> "\"unknown\",\"heavy\",\"low\""
@@ -1091,6 +1157,12 @@ class MapRouteLineTest {
         val directionsRouteAsJson =
             "{\"routeIndex\":\"0\",\"distance\":66.9,\"duration\":45.0,\"geometry\":\"urylgArvfuhFjJ`CbC{[pAZ\",\"weight\":96.6,\"weight_name\":\"routability\",\"legs\":[{\"distance\":66.9,\"duration\":45.0,\"summary\":\"Laurel Place, Lincoln Avenue\",\"steps\":[{\"distance\":21.0,\"duration\":16.7,\"geometry\":\"urylgArvfuhFjJ`C\",\"name\":\"\",\"mode\":\"driving\",\"maneuver\":{\"location\":[-122.523514,37.975355],\"bearing_before\":0.0,\"bearing_after\":196.0,\"instruction\":\"Head south\",\"type\":\"depart\",\"modifier\":\"right\"},\"voiceInstructions\":[{\"distanceAlongGeometry\":21.0,\"announcement\":\"Head south, then turn left onto Laurel Place\",\"ssmlAnnouncement\":\"\\u003cspeak\\u003e\\u003camazon:effect name\\u003d\\\"drc\\\"\\u003e\\u003cprosody rate\\u003d\\\"1.08\\\"\\u003eHead south, then turn left onto Laurel Place\\u003c/prosody\\u003e\\u003c/amazon:effect\\u003e\\u003c/speak\\u003e\"},{\"distanceAlongGeometry\":18.9,\"announcement\":\"Turn left onto Laurel Place, then turn right onto Lincoln Avenue\",\"ssmlAnnouncement\":\"\\u003cspeak\\u003e\\u003camazon:effect name\\u003d\\\"drc\\\"\\u003e\\u003cprosody rate\\u003d\\\"1.08\\\"\\u003eTurn left onto Laurel Place, then turn right onto Lincoln Avenue\\u003c/prosody\\u003e\\u003c/amazon:effect\\u003e\\u003c/speak\\u003e\"}],\"bannerInstructions\":[{\"distanceAlongGeometry\":21.0,\"primary\":{\"text\":\"Laurel Place\",\"components\":[{\"text\":\"Laurel Place\",\"type\":\"text\",\"abbr\":\"Laurel Pl\",\"abbr_priority\":0}],\"type\":\"turn\",\"modifier\":\"left\"}},{\"distanceAlongGeometry\":18.9,\"primary\":{\"text\":\"Laurel Place\",\"components\":[{\"text\":\"Laurel Place\",\"type\":\"text\",\"abbr\":\"Laurel Pl\",\"abbr_priority\":0}],\"type\":\"turn\",\"modifier\":\"left\"},\"sub\":{\"text\":\"Lincoln Avenue\",\"components\":[{\"text\":\"Lincoln Avenue\",\"type\":\"text\",\"abbr\":\"Lincoln Ave\",\"abbr_priority\":0}],\"type\":\"turn\",\"modifier\":\"right\"}}],\"driving_side\":\"right\",\"weight\":52.6,\"intersections\":[{\"location\":[-122.523514,37.975355],\"bearings\":[196],\"entry\":[true],\"out\":0}]},{\"distance\":41.2,\"duration\":27.3,\"geometry\":\"igylgAtzfuhFbC{[\",\"name\":\"Laurel Place\",\"mode\":\"driving\",\"maneuver\":{\"location\":[-122.523579,37.975173],\"bearing_before\":195.0,\"bearing_after\":99.0,\"instruction\":\"Turn left onto Laurel Place\",\"type\":\"turn\",\"modifier\":\"left\"},\"voiceInstructions\":[{\"distanceAlongGeometry\":22.6,\"announcement\":\"Turn right onto Lincoln Avenue, then you will arrive at your destination\",\"ssmlAnnouncement\":\"\\u003cspeak\\u003e\\u003camazon:effect name\\u003d\\\"drc\\\"\\u003e\\u003cprosody rate\\u003d\\\"1.08\\\"\\u003eTurn right onto Lincoln Avenue, then you will arrive at your destination\\u003c/prosody\\u003e\\u003c/amazon:effect\\u003e\\u003c/speak\\u003e\"}],\"bannerInstructions\":[{\"distanceAlongGeometry\":41.2,\"primary\":{\"text\":\"Lincoln Avenue\",\"components\":[{\"text\":\"Lincoln Avenue\",\"type\":\"text\",\"abbr\":\"Lincoln Ave\",\"abbr_priority\":0}],\"type\":\"turn\",\"modifier\":\"right\"}}],\"driving_side\":\"right\",\"weight\":43.0,\"intersections\":[{\"location\":[-122.523579,37.975173],\"bearings\":[15,105,285],\"entry\":[false,true,true],\"in\":0,\"out\":1}]},{\"distance\":4.7,\"duration\":1.0,\"geometry\":\"ecylgAx}euhFpAZ\",\"name\":\"Lincoln Avenue\",\"mode\":\"driving\",\"maneuver\":{\"location\":[-122.523117,37.975107],\"bearing_before\":99.0,\"bearing_after\":194.0,\"instruction\":\"Turn right onto Lincoln Avenue\",\"type\":\"turn\",\"modifier\":\"right\"},\"voiceInstructions\":[{\"distanceAlongGeometry\":4.7,\"announcement\":\"You have arrived at your destination\",\"ssmlAnnouncement\":\"\\u003cspeak\\u003e\\u003camazon:effect name\\u003d\\\"drc\\\"\\u003e\\u003cprosody rate\\u003d\\\"1.08\\\"\\u003eYou have arrived at your destination\\u003c/prosody\\u003e\\u003c/amazon:effect\\u003e\\u003c/speak\\u003e\"}],\"bannerInstructions\":[{\"distanceAlongGeometry\":4.7,\"primary\":{\"text\":\"You have arrived\",\"components\":[{\"text\":\"You have arrived\",\"type\":\"text\"}],\"type\":\"arrive\",\"modifier\":\"straight\"}}],\"driving_side\":\"right\",\"weight\":1.0,\"intersections\":[{\"location\":[-122.523117,37.975107],\"bearings\":[15,105,195,285],\"entry\":[true,true,true,false],\"in\":3,\"out\":2}]},{\"distance\":0.0,\"duration\":0.0,\"geometry\":\"s`ylgAt~euhF\",\"name\":\"Lincoln Avenue\",\"mode\":\"driving\",\"maneuver\":{\"location\":[-122.523131,37.975066],\"bearing_before\":195.0,\"bearing_after\":0.0,\"instruction\":\"You have arrived at your destination\",\"type\":\"arrive\"},\"voiceInstructions\":[],\"bannerInstructions\":[],\"driving_side\":\"right\",\"weight\":0.0,\"intersections\":[{\"location\":[-122.523131,37.975066],\"bearings\":[15],\"entry\":[true],\"in\":0}]}],\"annotation\":{\"distance\":[21.030105037432428,41.16669115760234,4.722589365163041],\"congestion\":[$congestion]}}],\"routeOptions\":{\"baseUrl\":\"https://api.mapbox.com\",\"user\":\"mapbox\",\"profile\":\"driving-traffic\",\"coordinates\":[[-122.5237559,37.9754094],[-122.5231475,37.9750697]],\"alternatives\":true,\"language\":\"en\",\"continue_straight\":false,\"roundabout_exits\":false,\"geometries\":\"polyline6\",\"overview\":\"full\",\"steps\":true,\"annotations\":\"congestion,distance\",\"voice_instructions\":true,\"banner_instructions\":true,\"voice_units\":\"imperial\",\"access_token\":\"$tokenHere\",\"uuid\":\"ck9g2sbdk6pod7ynuece0r2yo\"},\"voiceLocale\":\"en-US\"}"
         return DirectionsRoute.fromJson(directionsRouteAsJson)
+    }
+
+    private fun getDirectionsRoute(): DirectionsRoute {
+        val tokenHere = "someToken"
+        val route = "{\"routeIndex\":\"0\",\"distance\":879.1,\"duration\":228.6,\"geometry\":\"miylgAniguhF{Cra@iBdVa@nFtThE`RpDpFfBr]xEvCd@nU~DUbCoBnd@vn@lC~EVzRj@jOfA~Rr@iAbQiBh^o@|N[fSlUjBbPpAnTfB|FeiA\",\"weight\":396.4,\"weight_name\":\"routability\",\"legs\":[{\"distance\":879.1,\"duration\":228.6,\"summary\":\"Nye Street, Lootens Place\",\"steps\":[{\"distance\":93.1,\"duration\":24.4,\"geometry\":\"miylgAniguhF{Cra@iBdVa@nF\",\"name\":\"Laurel Place\",\"mode\":\"driving\",\"maneuver\":{\"location\":[-122.523816,37.975207],\"bearing_before\":0.0,\"bearing_after\":280.0,\"instruction\":\"Head west on Laurel Place\",\"type\":\"depart\",\"modifier\":\"right\"},\"voiceInstructions\":[{\"distanceAlongGeometry\":93.1,\"announcement\":\"Head west on Laurel Place, then turn left onto Nye Street\",\"ssmlAnnouncement\":\"\\u003cspeak\\u003e\\u003camazon:effect name\\u003d\\\"drc\\\"\\u003e\\u003cprosody rate\\u003d\\\"1.08\\\"\\u003eHead west on Laurel Place, then turn left onto Nye Street\\u003c/prosody\\u003e\\u003c/amazon:effect\\u003e\\u003c/speak\\u003e\"},{\"distanceAlongGeometry\":57.2,\"announcement\":\"Turn left onto Nye Street\",\"ssmlAnnouncement\":\"\\u003cspeak\\u003e\\u003camazon:effect name\\u003d\\\"drc\\\"\\u003e\\u003cprosody rate\\u003d\\\"1.08\\\"\\u003eTurn left onto Nye Street\\u003c/prosody\\u003e\\u003c/amazon:effect\\u003e\\u003c/speak\\u003e\"}],\"bannerInstructions\":[{\"distanceAlongGeometry\":93.1,\"primary\":{\"text\":\"Nye Street\",\"components\":[{\"text\":\"Nye Street\",\"type\":\"text\",\"abbr\":\"Nye St\",\"abbr_priority\":0}],\"type\":\"turn\",\"modifier\":\"left\"}}],\"driving_side\":\"right\",\"weight\":54.9,\"intersections\":[{\"location\":[-122.523816,37.975207],\"bearings\":[280],\"entry\":[true],\"out\":0}]},{\"distance\":193.5,\"duration\":57.7,\"geometry\":\"urylgAxjiuhFtThE`RpDpFfBr]xEvCd@nU~D\",\"name\":\"Nye Street\",\"mode\":\"driving\",\"maneuver\":{\"location\":[-122.524861,37.975355],\"bearing_before\":279.0,\"bearing_after\":192.0,\"instruction\":\"Turn left onto Nye Street\",\"type\":\"turn\",\"modifier\":\"left\"},\"voiceInstructions\":[{\"distanceAlongGeometry\":173.5,\"announcement\":\"In 600 feet, turn right onto 5th Avenue\",\"ssmlAnnouncement\":\"\\u003cspeak\\u003e\\u003camazon:effect name\\u003d\\\"drc\\\"\\u003e\\u003cprosody rate\\u003d\\\"1.08\\\"\\u003eIn 600 feet, turn right onto \\u003csay-as interpret-as\\u003d\\\"address\\\"\\u003e5th\\u003c/say-as\\u003e Avenue\\u003c/prosody\\u003e\\u003c/amazon:effect\\u003e\\u003c/speak\\u003e\"},{\"distanceAlongGeometry\":50.3,\"announcement\":\"Turn right onto 5th Avenue, then turn left onto Lootens Place\",\"ssmlAnnouncement\":\"\\u003cspeak\\u003e\\u003camazon:effect name\\u003d\\\"drc\\\"\\u003e\\u003cprosody rate\\u003d\\\"1.08\\\"\\u003eTurn right onto \\u003csay-as interpret-as\\u003d\\\"address\\\"\\u003e5th\\u003c/say-as\\u003e Avenue, then turn left onto Lootens Place\\u003c/prosody\\u003e\\u003c/amazon:effect\\u003e\\u003c/speak\\u003e\"}],\"bannerInstructions\":[{\"distanceAlongGeometry\":193.5,\"primary\":{\"text\":\"5th Avenue\",\"components\":[{\"text\":\"5th Avenue\",\"type\":\"text\",\"abbr\":\"5th Ave\",\"abbr_priority\":0}],\"type\":\"turn\",\"modifier\":\"right\"}},{\"distanceAlongGeometry\":50.3,\"primary\":{\"text\":\"5th Avenue\",\"components\":[{\"text\":\"5th Avenue\",\"type\":\"text\",\"abbr\":\"5th Ave\",\"abbr_priority\":0}],\"type\":\"turn\",\"modifier\":\"right\"},\"sub\":{\"text\":\"Lootens Place\",\"components\":[{\"text\":\"Lootens Place\",\"type\":\"text\",\"abbr\":\"Lootens Pl\",\"abbr_priority\":0}],\"type\":\"turn\",\"modifier\":\"left\"}}],\"driving_side\":\"right\",\"weight\":70.5,\"intersections\":[{\"location\":[-122.524861,37.975355],\"bearings\":[15,105,195,285],\"entry\":[true,false,true,true],\"in\":1,\"out\":2},{\"location\":[-122.525103,37.974582],\"bearings\":[15,105,195,285],\"entry\":[false,true,true,true],\"in\":0,\"out\":2}]},{\"distance\":58.9,\"duration\":13.1,\"geometry\":\"ohvlgA|gjuhFUbCoBnd@\",\"name\":\"5th Avenue\",\"mode\":\"driving\",\"maneuver\":{\"location\":[-122.525327,37.973656],\"bearing_before\":191.0,\"bearing_after\":281.0,\"instruction\":\"Turn right onto 5th Avenue\",\"type\":\"turn\",\"modifier\":\"right\"},\"voiceInstructions\":[{\"distanceAlongGeometry\":58.9,\"announcement\":\"Turn left onto Lootens Place\",\"ssmlAnnouncement\":\"\\u003cspeak\\u003e\\u003camazon:effect name\\u003d\\\"drc\\\"\\u003e\\u003cprosody rate\\u003d\\\"1.08\\\"\\u003eTurn left onto Lootens Place\\u003c/prosody\\u003e\\u003c/amazon:effect\\u003e\\u003c/speak\\u003e\"}],\"bannerInstructions\":[{\"distanceAlongGeometry\":58.9,\"primary\":{\"text\":\"Lootens Place\",\"components\":[{\"text\":\"Lootens Place\",\"type\":\"text\",\"abbr\":\"Lootens Pl\",\"abbr_priority\":0}],\"type\":\"turn\",\"modifier\":\"left\"}}],\"driving_side\":\"right\",\"weight\":47.3,\"intersections\":[{\"location\":[-122.525327,37.973656],\"bearings\":[15,105,180,285],\"entry\":[false,true,true,true],\"in\":0,\"out\":3}]},{\"distance\":198.1,\"duration\":60.8,\"geometry\":\"ulvlgApqkuhFvn@lC~EVzRj@jOfA~Rr@\",\"name\":\"Lootens Place\",\"mode\":\"driving\",\"maneuver\":{\"location\":[-122.525993,37.973723],\"bearing_before\":275.0,\"bearing_after\":182.0,\"instruction\":\"Turn left onto Lootens Place\",\"type\":\"turn\",\"modifier\":\"left\"},\"voiceInstructions\":[{\"distanceAlongGeometry\":178.1,\"announcement\":\"In 600 feet, turn right onto 3rd Street\",\"ssmlAnnouncement\":\"\\u003cspeak\\u003e\\u003camazon:effect name\\u003d\\\"drc\\\"\\u003e\\u003cprosody rate\\u003d\\\"1.08\\\"\\u003eIn 600 feet, turn right onto \\u003csay-as interpret-as\\u003d\\\"address\\\"\\u003e3rd\\u003c/say-as\\u003e Street\\u003c/prosody\\u003e\\u003c/amazon:effect\\u003e\\u003c/speak\\u003e\"},{\"distanceAlongGeometry\":48.9,\"announcement\":\"Turn right onto 3rd Street, then turn left onto Brooks Street\",\"ssmlAnnouncement\":\"\\u003cspeak\\u003e\\u003camazon:effect name\\u003d\\\"drc\\\"\\u003e\\u003cprosody rate\\u003d\\\"1.08\\\"\\u003eTurn right onto \\u003csay-as interpret-as\\u003d\\\"address\\\"\\u003e3rd\\u003c/say-as\\u003e Street, then turn left onto Brooks Street\\u003c/prosody\\u003e\\u003c/amazon:effect\\u003e\\u003c/speak\\u003e\"}],\"bannerInstructions\":[{\"distanceAlongGeometry\":198.1,\"primary\":{\"text\":\"3rd Street\",\"components\":[{\"text\":\"3rd Street\",\"type\":\"text\",\"abbr\":\"3rd St\",\"abbr_priority\":0}],\"type\":\"turn\",\"modifier\":\"right\"}},{\"distanceAlongGeometry\":48.9,\"primary\":{\"text\":\"3rd Street\",\"components\":[{\"text\":\"3rd Street\",\"type\":\"text\",\"abbr\":\"3rd St\",\"abbr_priority\":0}],\"type\":\"turn\",\"modifier\":\"right\"},\"sub\":{\"text\":\"Brooks Street\",\"components\":[{\"text\":\"Brooks Street\",\"type\":\"text\",\"abbr\":\"Brooks St\",\"abbr_priority\":0}],\"type\":\"turn\",\"modifier\":\"left\"}}],\"driving_side\":\"right\",\"weight\":89.2,\"intersections\":[{\"location\":[-122.525993,37.973723],\"bearings\":[15,90,180,300],\"entry\":[true,false,true,true],\"in\":1,\"out\":2},{\"location\":[-122.526064,37.972959],\"bearings\":[0,105,180,270],\"entry\":[false,true,true,true],\"in\":0,\"out\":2},{\"location\":[-122.526098,37.972529],\"bearings\":[0,105,180],\"entry\":[false,true,true],\"in\":0,\"out\":2}]},{\"distance\":121.0,\"duration\":15.2,\"geometry\":\"u}rlgA~{kuhFiAbQiBh^o@|N[fS\",\"name\":\"3rd Street\",\"mode\":\"driving\",\"maneuver\":{\"location\":[-122.52616,37.971947],\"bearing_before\":182.0,\"bearing_after\":278.0,\"instruction\":\"Turn right onto 3rd Street\",\"type\":\"end of road\",\"modifier\":\"right\"},\"voiceInstructions\":[{\"distanceAlongGeometry\":119.4,\"announcement\":\"Turn left onto Brooks Street, then turn left onto 2nd Street\",\"ssmlAnnouncement\":\"\\u003cspeak\\u003e\\u003camazon:effect name\\u003d\\\"drc\\\"\\u003e\\u003cprosody rate\\u003d\\\"1.08\\\"\\u003eTurn left onto Brooks Street, then turn left onto \\u003csay-as interpret-as\\u003d\\\"address\\\"\\u003e2nd\\u003c/say-as\\u003e Street\\u003c/prosody\\u003e\\u003c/amazon:effect\\u003e\\u003c/speak\\u003e\"}],\"bannerInstructions\":[{\"distanceAlongGeometry\":121.0,\"primary\":{\"text\":\"Brooks Street\",\"components\":[{\"text\":\"Brooks Street\",\"type\":\"text\",\"abbr\":\"Brooks St\",\"abbr_priority\":0}],\"type\":\"turn\",\"modifier\":\"left\"}},{\"distanceAlongGeometry\":119.4,\"primary\":{\"text\":\"Brooks Street\",\"components\":[{\"text\":\"Brooks Street\",\"type\":\"text\",\"abbr\":\"Brooks St\",\"abbr_priority\":0}],\"type\":\"turn\",\"modifier\":\"left\"},\"sub\":{\"text\":\"2nd Street\",\"components\":[{\"text\":\"2nd Street\",\"type\":\"text\",\"abbr\":\"2nd St\",\"abbr_priority\":0}],\"type\":\"turn\",\"modifier\":\"left\"}}],\"driving_side\":\"right\",\"weight\":45.2,\"intersections\":[{\"location\":[-122.52616,37.971947],\"bearings\":[0,105,285],\"entry\":[false,false,true],\"in\":0,\"out\":2}]},{\"distance\":109.4,\"duration\":49.9,\"geometry\":\"ueslgArqnuhFlUjBbPpAnTfB\",\"name\":\"Brooks Street\",\"mode\":\"driving\",\"maneuver\":{\"location\":[-122.52753,37.972075],\"bearing_before\":272.0,\"bearing_after\":185.0,\"instruction\":\"Turn left onto Brooks Street\",\"type\":\"turn\",\"modifier\":\"left\"},\"voiceInstructions\":[{\"distanceAlongGeometry\":32.9,\"announcement\":\"Turn left onto 2nd Street, then you will arrive at your destination\",\"ssmlAnnouncement\":\"\\u003cspeak\\u003e\\u003camazon:effect name\\u003d\\\"drc\\\"\\u003e\\u003cprosody rate\\u003d\\\"1.08\\\"\\u003eTurn left onto \\u003csay-as interpret-as\\u003d\\\"address\\\"\\u003e2nd\\u003c/say-as\\u003e Street, then you will arrive at your destination\\u003c/prosody\\u003e\\u003c/amazon:effect\\u003e\\u003c/speak\\u003e\"}],\"bannerInstructions\":[{\"distanceAlongGeometry\":109.4,\"primary\":{\"text\":\"2nd Street\",\"components\":[{\"text\":\"2nd Street\",\"type\":\"text\",\"abbr\":\"2nd St\",\"abbr_priority\":0}],\"type\":\"turn\",\"modifier\":\"left\"}}],\"driving_side\":\"right\",\"weight\":81.8,\"intersections\":[{\"location\":[-122.52753,37.972075],\"bearings\":[90,180,270],\"entry\":[false,true,true],\"in\":0,\"out\":1}]},{\"distance\":105.0,\"duration\":7.5,\"geometry\":\"shqlgAxznuhF|FeiA\",\"name\":\"2nd Street\",\"mode\":\"driving\",\"maneuver\":{\"location\":[-122.527677,37.971098],\"bearing_before\":185.0,\"bearing_after\":97.0,\"instruction\":\"Turn left onto 2nd Street\",\"type\":\"turn\",\"modifier\":\"left\"},\"voiceInstructions\":[{\"distanceAlongGeometry\":70.0,\"announcement\":\"You have arrived at your destination, on the right\",\"ssmlAnnouncement\":\"\\u003cspeak\\u003e\\u003camazon:effect name\\u003d\\\"drc\\\"\\u003e\\u003cprosody rate\\u003d\\\"1.08\\\"\\u003eYou have arrived at your destination, on the right\\u003c/prosody\\u003e\\u003c/amazon:effect\\u003e\\u003c/speak\\u003e\"}],\"bannerInstructions\":[{\"distanceAlongGeometry\":105.0,\"primary\":{\"text\":\"You will arrive\",\"components\":[{\"text\":\"You will arrive\",\"type\":\"text\"}],\"type\":\"arrive\",\"modifier\":\"right\"}},{\"distanceAlongGeometry\":70.0,\"primary\":{\"text\":\"You have arrived\",\"components\":[{\"text\":\"You have arrived\",\"type\":\"text\"}],\"type\":\"arrive\",\"modifier\":\"right\"}}],\"driving_side\":\"right\",\"weight\":7.5,\"intersections\":[{\"location\":[-122.527677,37.971098],\"bearings\":[0,105,270],\"entry\":[false,true,false],\"in\":0,\"out\":1}]},{\"distance\":0.0,\"duration\":0.0,\"geometry\":\"u`qlgArpluhF\",\"name\":\"2nd Street\",\"mode\":\"driving\",\"maneuver\":{\"location\":[-122.52649,37.970971],\"bearing_before\":98.0,\"bearing_after\":0.0,\"instruction\":\"You have arrived at your destination, on the right\",\"type\":\"arrive\",\"modifier\":\"right\"},\"voiceInstructions\":[],\"bannerInstructions\":[],\"driving_side\":\"right\",\"weight\":0.0,\"intersections\":[{\"location\":[-122.52649,37.970971],\"bearings\":[278],\"entry\":[true],\"in\":0}]}],\"annotation\":{\"distance\":[49.34180914849393,33.05802569090612,10.689795908138624,39.59839199650681,34.80992351675273,14.209672171473654,55.332462814681335,8.615785848371143,40.91659557025385,5.914738766868038,52.97482177741399,85.20461216655733,12.501699782507817,35.42252405667138,29.311743333674485,35.66534898263901,25.758372926868166,44.32194001964289,22.517423451854935,28.451254156899267,40.20997808786729,30.687302775025532,38.532552346674045,105.03289645548367],\"congestion\":[\"low\",\"unknown\",\"unknown\",\"low\",\"unknown\",\"unknown\",\"heavy\",\"low\",\"low\",\"unknown\",\"low\",\"heavy\",\"low\",\"low\",\"low\",\"low\",\"low\",\"low\",\"low\",\"low\",\"unknown\",\"unknown\",\"unknown\",\"low\"]}}],\"routeOptions\":{\"baseUrl\":\"https://api.mapbox.com\",\"user\":\"mapbox\",\"profile\":\"driving-traffic\",\"coordinates\":[[-122.5237734,37.9753973],[-122.5264995,37.9709171]],\"alternatives\":true,\"language\":\"en\",\"continue_straight\":false,\"roundabout_exits\":false,\"geometries\":\"polyline6\",\"overview\":\"full\",\"steps\":true,\"annotations\":\"congestion,distance\",\"voice_instructions\":true,\"banner_instructions\":true,\"voice_units\":\"imperial\",\"access_token\":\"$tokenHere\",\"uuid\":\"ckd9ao6hl13a97ars2byaymo7\"},\"voiceLocale\":\"en-US\"}"
+        return DirectionsRoute.fromJson(route)
     }
 
     @Test
