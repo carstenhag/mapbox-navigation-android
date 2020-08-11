@@ -79,8 +79,11 @@
     <string name="title_navigation_view_fragment" translatable="false">NavigationView In A Fragment</string>
     <string name="description_navigation_view_fragment" translatable="false">Shows how to use NavigationView to implement turn by turn in a fragment.</string>
 
-    <string name="title_navigation_route_ui">Navigation Map Route</string>
-    <string name="description_navigation_route_ui">An example using NavigationMapRoute</string>
+    <string name="title_navigation_route_ui" translatable="false">Navigation Map Route</string>
+    <string name="description_navigation_route_ui" translatable="false">An example using NavigationMapRoute</string>
+
+    <string name="title_traffic_toggle" translatable="false">Traffic toggle</string>
+    <string name="description_traffic_toggle" translatable="false">Toggle the visibility of the NavigationView\'s traffic congestion layers.</string>
 
     <string name="settings" translatable="false">Settings</string>
     <string name="simulate_route" translatable="false">Simulate Route</string>
