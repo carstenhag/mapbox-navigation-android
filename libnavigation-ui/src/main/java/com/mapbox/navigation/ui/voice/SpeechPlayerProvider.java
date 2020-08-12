@@ -33,7 +33,7 @@ public class SpeechPlayerProvider {
   private VoiceInstructionLoader voiceInstructionLoader;
   private ConnectivityStatusProvider connectivityStatus;
   @NonNull
-  private SpeechPlayerState speechPlayerState = SpeechPlayerState.IDLE;
+  private SpeechPlayerState speechPlayerState = SpeechPlayerState.OFFLINE_PLAYER_INITIALIZING;
   @Nullable
   private SpeechPlayerStateChangeObserver observer = null;
   private boolean isFallbackAlwaysEnabled = true;
@@ -114,9 +114,18 @@ public class SpeechPlayerProvider {
   }
 
   void onSpeechPlayerStateChanged(@NonNull SpeechPlayerState speechPlayerState) {
-    this.speechPlayerState = speechPlayerState;
+    if (speechPlayerState == SpeechPlayerState.OFFLINE_PLAYER_INITIALIZED) {
+      if (this.speechPlayerState == SpeechPlayerState.OFFLINE_PLAYER_INITIALIZING) {
+        this.speechPlayerState = SpeechPlayerState.IDLE;
+      } else {
+        return;
+      }
+    } else {
+      this.speechPlayerState = speechPlayerState;
+    }
+
     if (observer != null) {
-      observer.onStateChange(speechPlayerState);
+      observer.onStateChange(this.speechPlayerState);
     }
   }
 

@@ -16,12 +16,12 @@ class UtteranceListener extends UtteranceProgressListener {
 
   @Override
   public void onDone(String utteranceId) {
-    voiceListener.onDone();
+    voiceListener.onDone(SpeechPlayerState.IDLE);
   }
 
   @Override
   public void onError(String utteranceId) {
     // Intentionally empty
-    voiceListener.onDone();
+    voiceListener.onDone(SpeechPlayerState.IDLE);
   }
 }
